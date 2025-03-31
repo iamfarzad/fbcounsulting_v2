@@ -37,8 +37,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`}>
-      <body className="antialiased">
+    <html lang="en" className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         <AIInterfaceProvider>{children}</AIInterfaceProvider>
       </body>
     </html>
