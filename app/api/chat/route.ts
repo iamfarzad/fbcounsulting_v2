@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -26,8 +27,9 @@ Your end goal is to create leads, have the visitor sign up or book a 15-min call
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  
+
   if (!API_KEY) {
+    console.error("GEMINI_API_KEY environment variable is not loaded!");
     return NextResponse.json(
       { error: "Missing GEMINI_API_KEY environment variable" },
       { status: 500 }
@@ -35,8 +37,18 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    let historyString = "";
+    if (body.history && body.history.length > 0) {
+      const formattedHistory = body.history
+        .map((msg: any) =>
+          `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+        )
+        .join("\n");
+      historyString = `\n\nConversation history:\n${formattedHistory}`;
+    }
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -46,14 +58,11 @@ export async function POST(req: NextRequest) {
           contents: [
             {
               role: "user",
-              parts: [{ 
-                text: SYSTEM_INSTRUCTION + "\n\nConversation history:" + 
-                  (body.history ? "\n" + body.history.map((msg: any) => 
-                    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
-                  ).join("\n") : "") +
-                  "\n\nUser's new message: " + body.message +
-                  "\n\nRespond as Farzad-AI:"
-              }]
+              parts: [
+                {
+                  text: `${SYSTEM_INSTRUCTION}${historyString}\n\nUser's new message: ${body.message}\n\nRespond as Farzad-AI:`
+                }
+              ]
             }
           ],
           generationConfig: {
@@ -67,22 +76,27 @@ export async function POST(req: NextRequest) {
     );
 
     if (!response.ok) {
-      console.error("API Response:", await response.text());
+      const errorBody = await response.text();
+      console.error(`API Error Response (${response.status}):`, errorBody);
       throw new Error(`API call failed with status: ${response.status}`);
     }
 
     const data = await response.json();
-    const text = data.candidates[0]?.content?.parts[0]?.text;
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.[0]?.text;
 
     if (!text) {
-      throw new Error('No text generated');
+      console.error("Unexpected API Response structure:", JSON.stringify(data, null, 2));
+      throw new Error('No text generated or unexpected response structure');
     }
 
     return NextResponse.json({ message: text, status: 200 });
+
   } catch (error) {
     console.error("Error sending message:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Error sending message", status: 500 }
+      { error: `Error sending message: ${errorMessage}`, status: 500 }
     );
   }
 }
