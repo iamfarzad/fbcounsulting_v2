@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST="{\"pages\":{},\"app\":{\"/home/user/personal-ai-builder/app/layout\":[\"static/media/a34f9d1faa5f3315-s.p.woff2\",\"static/media/558ca1a6aa3cb55e-s.p.woff2\",\"static/media/2b3f1035ed87a788-s.p.woff2\"]},\"appUsingSizeAdjust\":true,\"pagesUsingSizeAdjust\":false}"
