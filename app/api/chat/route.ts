@@ -1,7 +1,7 @@
-
 import { NextRequest, NextResponse } from "next/server";
 
 const API_KEY = process.env.GEMINI_API_KEY;
+const API_TIMEOUT = 15000; // 15 second timeout
 
 const SYSTEM_INSTRUCTION = `Farzad-AI is an AI-powered assistant designed to embody the expertise and personalized approach of Farzad Bayat, a seasoned AI systems consultant. With over 10,000 hours dedicated since 2020 to building, testing, and deploying AI-driven solutions from scratch, Farzad has cultivated a wealth of practical, battle-tested knowledge. His journey began without any coding experience—driven solely by a vision and determination to create impactful products. Through hands-on experimentation, extensive study of documentation, and overcoming challenges with unreliable developers, he has developed a deep understanding of AI architectures and rapid prototyping.
 
@@ -25,30 +25,37 @@ Behavior Guidelines:
 
 Your end goal is to create leads, have the visitor sign up or book a 15-min call with Farzad.`;
 
+// Helper function to format conversation history
+function formatHistory(history: any[]) {
+  if (!history || history.length === 0) return "";
+  return "\n" + history.map((msg: any) => 
+    `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
+  ).join("\n");
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
-
+  
   if (!API_KEY) {
-    console.error("GEMINI_API_KEY environment variable is not loaded!");
     return NextResponse.json(
       { error: "Missing GEMINI_API_KEY environment variable" },
       { status: 500 }
     );
   }
 
-  try {
-    let historyString = "";
-    if (body.history && body.history.length > 0) {
-      const formattedHistory = body.history
-        .map((msg: any) =>
-          `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
-        )
-        .join("\n");
-      historyString = `\n\nConversation history:\n${formattedHistory}`;
-    }
+  // Create abort controller for timeout handling
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
 
+  try {
+    // Optimize payload by pre-formatting history
+    const formattedHistory = formatHistory(body.history);
+    
+    // Keep the message shorter and more focused
+    const prompt = `${SYSTEM_INSTRUCTION}\n\nConversation history:${formattedHistory}\n\nUser's new message: ${body.message}\n\nRespond as Farzad-AI:`;
+    
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: {
@@ -58,11 +65,7 @@ export async function POST(req: NextRequest) {
           contents: [
             {
               role: "user",
-              parts: [
-                {
-                  text: `${SYSTEM_INSTRUCTION}${historyString}\n\nUser's new message: ${body.message}\n\nRespond as Farzad-AI:`
-                }
-              ]
+              parts: [{ text: prompt }]
             }
           ],
           generationConfig: {
@@ -71,32 +74,43 @@ export async function POST(req: NextRequest) {
             topP: 0.8,
             topK: 40
           }
-        })
+        }),
+        signal: controller.signal
       }
     );
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      const errorBody = await response.text();
-      console.error(`API Error Response (${response.status}):`, errorBody);
+      const errorText = await response.text();
+      console.error("API Response:", errorText);
       throw new Error(`API call failed with status: ${response.status}`);
     }
 
     const data = await response.json();
-    const candidate = data.candidates?.[0];
-    const text = candidate?.content?.parts?.[0]?.text;
+    const text = data.candidates[0]?.content?.parts[0]?.text;
 
     if (!text) {
-      console.error("Unexpected API Response structure:", JSON.stringify(data, null, 2));
-      throw new Error('No text generated or unexpected response structure');
+      throw new Error('No text generated');
     }
 
     return NextResponse.json({ message: text, status: 200 });
-
-  } catch (error) {
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    
     console.error("Error sending message:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Better error responses
+    if (error.name === 'AbortError') {
+      return NextResponse.json(
+        { error: "Request timed out", status: 504 },
+        { status: 504 }
+      );
+    }
+    
     return NextResponse.json(
-      { error: `Error sending message: ${errorMessage}`, status: 500 }
+      { error: "Error processing your request", details: error.message, status: 500 },
+      { status: 500 }
     );
   }
 }

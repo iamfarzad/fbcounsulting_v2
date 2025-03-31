@@ -1,4 +1,4 @@
-// File: /home/user/personal-ai-builder/app/api/chat/route.ts
+// File: /Users/farzad/vscode/fbcounsulting_v2/app/api/chat/route.ts
 import * as entry from '../../../../../app/api/chat/route.js'
 import type { NextRequest } from 'next/server.js'
 
