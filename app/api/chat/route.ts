@@ -28,7 +28,7 @@ Your end goal is to create leads, have the visitor sign up or book a 15-min call
 // Helper function to format conversation history
 function formatHistory(history: any[]) {
   if (!history || history.length === 0) return "";
-  return "\n" + history.map((msg: any) => 
+  return "\n" + history.map((msg) => 
     `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`
   ).join("\n");
 }
@@ -39,6 +39,14 @@ export async function POST(req: NextRequest) {
   if (!API_KEY) {
     return NextResponse.json(
       { error: "Missing GEMINI_API_KEY environment variable" },
+      { status: 500 }
+    );
+  }
+
+  if (!API_KEY.match(/^[A-Za-z0-9-_]{20,}$/)) {
+    console.error("Invalid API key format - Make sure you're using a valid API key");
+    return NextResponse.json(
+      { error: "Invalid API key format" },
       { status: 500 }
     );
   }
@@ -55,25 +63,18 @@ export async function POST(req: NextRequest) {
     const prompt = `${SYSTEM_INSTRUCTION}\n\nConversation history:${formattedHistory}\n\nUser's new message: ${body.message}\n\nRespond as Farzad-AI:`;
     
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-exp-03-25:generateContent?key=${API_KEY}`,
       {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-            topP: 0.8,
-            topK: 40
-          }
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
         }),
         signal: controller.signal
       }
@@ -83,14 +84,31 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("API Response:", errorText);
-      throw new Error(`API call failed with status: ${response.status}`);
+      let errorMessage = `API call failed with status: ${response.status}`;
+      
+      try {
+        const errorData = JSON.parse(errorText);
+        console.error("Gemini API Error:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+          url: response.url
+        });
+        errorMessage = errorData.error?.message || errorMessage;
+      } catch {
+        console.error("Raw API Error:", errorText);
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    const text = data.candidates[0]?.content?.parts[0]?.text;
+    console.log("Gemini API Response:", JSON.stringify(data, null, 2));
+
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
 
     if (!text) {
+      console.error("Invalid response format:", JSON.stringify(data, null, 2));
       throw new Error('No text generated');
     }
 

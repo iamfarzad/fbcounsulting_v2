@@ -60,9 +60,10 @@ export default function AIInterface() {
         setMessages((prev) => [...prev, { role: "assistant", content: data.message }]);
       } catch (error) {
         console.error("Error:", error);
+        const errorMessage = error?.response?.data?.error || error?.message || "An unexpected error occurred";
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: "I apologize, but I encountered an error processing your request. Please try again." },
+          { role: "assistant", content: `I apologize, but I encountered an error: ${errorMessage}. Please try again.` },
         ]);
       } finally {
         setIsProcessing(false);
